@@ -1,0 +1,12 @@
+# Secrets / tokens
+config.local.yaml
+
+# Python
+venv/
+
+# Excel / CSV / fit files
+*.csv
+*.xlsx
+*.fit
+*.svg
+*.png

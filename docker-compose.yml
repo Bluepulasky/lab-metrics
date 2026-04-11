@@ -1,0 +1,9 @@
+services:
+  ups-metrics:
+    build: .
+    container_name: ups-metrics
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./:/app
