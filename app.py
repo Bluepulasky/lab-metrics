@@ -85,7 +85,7 @@ def ups_widget():
 
     df = pd.read_csv(BASE_DIR / 'ups.csv')
     df['date'] = pd.to_datetime(df['date'])
-    today = pd.Timestamp.now().normalize()
+    today = pd.Timestamp.now()
     chart_start = today - pd.Timedelta(days=1)
 
     df_filtered = df[(df['date'] >= chart_start)].copy()
@@ -124,7 +124,14 @@ def ups_widget():
     --color-negative: hsl(351, 74%, 73%);
   }}
 
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  * {{
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }}
 
   body {{
     background-color: hsl(var(--bgh), var(--bgs), var(--bgl)) !important;
@@ -262,7 +269,13 @@ Chart.defaults.font.family = 'Inter, sans-serif';
       }},
       scales: {{
         x: {{ 
-          ticks: {{ display: false }}, 
+          ticks: {{
+            maxRotation: 0,
+            maxTicksLimit: 12,
+            minRotation: 30,
+            maxRotation: 30,
+            color: 'hsl(220, 83%, 75%)'
+          }}, 
           grid: {{ color: 'rgba(255,255,255,0.1)' }},
           border: {{ color: 'rgba(255,255,255,0.2)' }}
         }},
@@ -274,7 +287,7 @@ Chart.defaults.font.family = 'Inter, sans-serif';
         }},
         y2: {{
           position: 'right',
-          max: 300,
+          max: 200,
           min: 0,
           ticks: {{ color: '#a070ff' }},
           grid: {{ drawOnChartArea: false }},
