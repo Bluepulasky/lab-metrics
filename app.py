@@ -212,7 +212,7 @@ Chart.defaults.font.family = 'Inter, sans-serif';
     data: {{
       labels: {labels},
       datasets: [
-        {{ label: 'CPU 10s avg (%)', data: {cpu_usage_trend}, pointStyle: 'circle', backgroundColor: '#4DA3FF', borderColor: '#4DA3FF', fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#4DA3FF', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
+        {{ label: 'CPU 10s avg (%)', data: {cpu_usage_trend}, pointStyle: 'circle', backgroundColor: '#F46060', borderColor: '#F46060', fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#F46060', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
       ]
     }},
     options: {{
@@ -705,7 +705,7 @@ def mem_disk_widget():
   </div>
 
   <div style="margin-top: 15px;">
-  <p class="primary" style="margin-top:8px; font-size: 16px;">Trend - Last 48h</p>
+  <p class="primary" style="margin-top:8px; font-size: 16px;">Trends - Last 48h</p>
     <div style="position: relative; height: 200px; width: 100%; margin-top: 5px;">
       <canvas id="chart"></canvas>
     </div>
