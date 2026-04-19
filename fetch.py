@@ -4,6 +4,8 @@ from pathlib import Path
 import csv
 from datetime import datetime
 import logging
+import psutil
+import subprocess
 
 if "__file__" in globals():
     BASE_DIR = Path(__file__).resolve().parent
@@ -15,8 +17,8 @@ NUT_PORT = 3493
 UPS_NAME = "cyberpower"
 
 # Configuración
-LOG_FILE = BASE_DIR / "ups.csv"
-MAX_ROWS = 5000  # Máximo de registros de datos (sin contar la cabecera)
+LOG_FILE = BASE_DIR / "metrics.csv"
+MAX_ROWS = 20000  # Máximo de registros de datos (sin contar la cabecera)
 
 def truncate_log_if_needed(file_path, max_rows):
     """
@@ -90,6 +92,25 @@ def fetch_ups_stats():
 
     ups_watts = round(ups_load * 540 / 100, 1)
 
+    #CPU
+    cpu_cores = psutil.cpu_percent(percpu=True, interval=10)
+    cpu_avg = round(sum(cpu_cores) / len(cpu_cores), 1)
+
+    # RAM
+    mem = psutil.virtual_memory()
+    mem_pct = round((mem.active / mem.total) * 100, 1)
+
+    # Tank HDD usage
+    used, avail = subprocess.check_output(
+        ["zfs", "list", "-H", "-p", "-o", "used,avail", "tank-hdd"],
+        text=True
+    ).strip().split("\t")
+
+    used = int(used)
+    avail = int(avail)
+
+    zfs_tank_hdd_pct = round((used / (used + avail)) * 100, 1)
+
     stats_file = LOG_FILE
     stats_file.parent.mkdir(parents=True, exist_ok=True)
     file_exists = stats_file.exists()
@@ -97,14 +118,17 @@ def fetch_ups_stats():
     with open(stats_file, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["date", "battery_charge", "ups_watts"])
+            writer.writerow(["date", "battery_charge", "ups_watts", "cpu_avg_10s", "mem_pct", "zfs_tank_hdd_pct"])
         writer.writerow([
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             battery_charge,
-            ups_watts
+            ups_watts,
+            cpu_avg,
+            mem_pct,
+            zfs_tank_hdd_pct
         ])
 
-    msg = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - ups battery: {battery_charge}, instant power: {ups_watts}W"
+    msg = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - ups battery: {battery_charge}, power: {ups_watts}W, cpu (10s avg): {cpu_avg}%, memory {mem_pct}%, zfs tank-hdd {zfs_tank_hdd_pct}%"
     logging.info(msg)
     print(msg)
 
