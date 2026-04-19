@@ -1,7 +1,7 @@
 services:
-  ups-metrics:
+  lab-metrics:
     build: .
-    container_name: ups-metrics
+    container_name: lab-metrics
     restart: unless-stopped
     ports:
       - "8084:8084"
