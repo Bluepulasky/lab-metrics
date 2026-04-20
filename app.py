@@ -69,30 +69,64 @@ def cpu_widget():
     today = pd.Timestamp.now()
     chart_start = today - pd.Timedelta(days=1)
 
-    df_filtered = df[(df['date'] >= chart_start)].copy()
+    cpu_data = (
+        df.loc[
+            (df['date'] >= chart_start) &
+            (df['Tdie'].notna()) &
+            (df['Tdie'] > 0),
+            ['date', 'cpu_avg_10s', 'Tdie']
+        ]
+        .copy()
+        .sort_values('date')
+    )
 
-    cpu_data = []
-    for _, row in df_filtered.iterrows():
+    cpu_data['cpu_usage_3_avg'] = (
+        cpu_data['cpu_avg_10s']
+        .rolling(window=3)
+        .max()
+        .round(1)
+    )
+
+    cpu_data['Tdie_3_avg'] = (
+        cpu_data['Tdie']
+        .rolling(window=3)
+        .max()
+        .round(1)
+    )
+
+    cpu_data = cpu_data.dropna(subset=['Tdie_3_avg'])
+
+    cpu_data = cpu_data.assign(
+        date=cpu_data['date'].dt.strftime('%d %H:%M')
+    ).rename(columns={
+        'cpu_avg_10s': 'cpu_usage'
+    }).to_dict('records')
+
+    cpu_data2 = []
+    for _, row in df.iterrows():
         cpu_avg_trend = row['cpu_avg_10s']
-        if pd.notna(cpu_avg_trend) and cpu_avg_trend > 0:
-            cpu_data.append({
+        tdie_trend = row['Tdie']
+        if pd.notna(tdie_trend) and tdie_trend > 0:
+            cpu_data2.append({
                     "date": str(row['date'].strftime('%d %H:%M')),
-                    "cpu_usage": cpu_avg_trend
+                    "cpu_usage": cpu_avg_trend,
+                    "Tdie": tdie_trend
                 })
-    cpu_data.sort(key=lambda x: x['date'])
 
-    labels = [d['date'] for d in cpu_data]
-    cpu_usage_trend = [d['cpu_usage'] for d in cpu_data]
+    labels = [d['date'] for d in cpu_data][::2]
+    cpu_usage_trend = [d['cpu_usage_3_avg'] for d in cpu_data][::2]
+    tdie_trend = [d['Tdie_3_avg'] for d in cpu_data][::2]
 
     # Convert the list of dictionaries to a DataFrame for easier manipulation
-    cpu_df = pd.DataFrame(cpu_data)
+    cpu_df = pd.DataFrame(cpu_data2)
 
     # Extract the maximum CPU usage from the 'cpu_usage' column
     max_cpu_usage = cpu_df['cpu_usage'].max()
     percentile_95_cpu_usage = round(cpu_df['cpu_usage'].quantile(0.95),1)
-
-    status_color1 = "var(--color-negative)" if max_cpu_usage > 90 else "var(--color-positive)"
-    status_color2 = "var(--color-negative)" if percentile_95_cpu_usage > 90 else "var(--color-positive)"
+    max_tdie = cpu_df['Tdie'].max()
+    min_tdie = cpu_df['Tdie'].min()
+    percentile_95_tdie = round(cpu_df['Tdie'].quantile(0.95),1)
+    tdie_min_above_70 = sum(1 for temp in cpu_df['Tdie'] if temp > 70)
 
     html = f"""
 <!DOCTYPE html>
@@ -103,92 +137,30 @@ def cpu_widget():
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root {{
-    --bgh: 232;
-    --bgs: 23%;
-    --bgl: 18%;
-    --color-primary: hsl(220, 83%, 75%);
-    --color-positive: hsl(105, 48%, 72%);
-    --color-negative: hsl(351, 74%, 73%);
-  }}
-
+  html, body {{ margin: 0; height: fit-content; background-color: hsl(232, 23%, 18%) !important; font-family: 'Inter', sans-serif; font-size: 13px; }}
+  .primary {{ color: #ffffff; }}
+  .row {{ margin: 1px 0; font-size: 12px; }}
+  p {{ margin: 3px 0; }}
+  canvas {{ width: 100% !important; }}
   * {{
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
   }}
-
-  body {{
-    background-color: hsl(var(--bgh), var(--bgs), var(--bgl)) !important;
-    color: var(--color-primary) !important;
-    font-family: monospace;
-    font-size: 14px;
-    padding: 4px;
-  }}
-
-  .model {{
-    font-weight: 500;
-    text-align: center;
-    padding: 0 0 6px 0;
-    border-bottom: 1px solid rgba(255,2255,255,0.15);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letterspacing: 1px;
-  }}
-
-  .row {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-  }}
-
-  .row:last-child {{
-    border-bottom: none;
-  }}
-
-  .label {{
-    font-weight: 500;
-    color: var(--color-primary);
-  }}
-
-  .value {{
-    opacity: 0.75; /* Tal como el .log-content del primer HTML */
-  }}
-
-  .status1 {{
-    font-weight: bold;
-    /* El color se inyectará por el script o el template */
-    color: {status_color1}; 
-  }}
-
-  .status2 {{
-    font-weight: bold;
-    /* El color se inyectará por el script o el template */
-    color: {status_color2}; 
-  }}
 </style>
 </head>
 <body>  
-  <div class="row">
-    <span class="label">Max CPU usage (10s avg) % (last 7d)</span>
-    <span class="status1">{max_cpu_usage}</span>
-  </div>
-
-  <div class="row">
-    <span class="label">95%pct CPU usage (10s avg) % (last 7d)</span>
-    <span class="status2">{percentile_95_cpu_usage}</span>
-  </div>
-
-  <div style="margin-top: 15px;">
-  <p class="primary" style="margin-top:8px; font-size: 16px;">Trend - Last 24h</p>
-    <div style="position: relative; height: 200px; width: 100%; margin-top: 5px;">
+  <div style="background: rgba(37,40,60,1); border: 1px solid hsl(232, 23%, 22%); box-shadow: 0px 3px 0px 0px hsl(232, 23%, 18%); border-radius: 8px; padding: 16px 16px;">
+  <p><span style="color: #a0b4d0">Max CPU usage (5s avg) (last 7d): </span><span style="font-weight:500; color: #A070FF">{max_cpu_usage} %</span><span style="color: #a0b4d0"> // </span><span style="font-weight:500; color: #A070FF">{percentile_95_cpu_usage}% (95%)</span></p>
+  <p><span style="color: #a0b4d0">Max Tdie (last 7d): </span><span style="font-weight:500; color: #F46060">{max_tdie} ºC</span><span style="color: #a0b4d0"> // </span><span style="font-weight:500; color: #F46060">{percentile_95_tdie}ºC (95%)</span></p>
+  <p><span style="color: #a0b4d0">Min Tdie (last 7d): </span><span style="font-weight:500; color: #60F4A2">{min_tdie} ºC</span></p>
+  <p><span style="color: #a0b4d0">Tdie Above 70ºC (last 7d): </span><span style="font-weight:500; color: #F46060">{tdie_min_above_70} min</span></p>
+  <div style="margin-top: 10px;">
+  <p class="hl" style="margin-top:8px; font-weight:500; margin:4px 0 0; color:#ffffff">Trends - Last 24h</p>
+    <div style="position: relative; height: 190px; width: 100%; margin-top: 5px;">
       <canvas id="chart"></canvas>
     </div>
+  </div>
   </div>
 </body>
 <script>
@@ -212,7 +184,8 @@ Chart.defaults.font.family = 'Inter, sans-serif';
     data: {{
       labels: {labels},
       datasets: [
-        {{ label: 'CPU 10s avg (%)', data: {cpu_usage_trend}, pointStyle: 'circle', backgroundColor: '#F46060', borderColor: '#F46060', fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#F46060', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
+        {{ label: 'CPU (%)', data: {cpu_usage_trend}, pointStyle: 'circle', backgroundColor: '#a070ff', borderColor: '#a070ff', borderWidth: 1.2, fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#a070ff', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
+        {{ label: 'Tdie (ºC)', data: {tdie_trend}, pointStyle: 'circle', backgroundColor: '#F46060', borderColor: '#F46060', borderWidth: 1.2, fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#F46060', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5,yAxisID: 'y2' }},
       ]
     }},
     options: {{
@@ -236,18 +209,24 @@ Chart.defaults.font.family = 'Inter, sans-serif';
       scales: {{
         x: {{ 
           ticks: {{
-            maxRotation: 0,
             maxTicksLimit: 12,
-            minRotation: 30,
-            maxRotation: 30,
+            minRotation: 20,
+            maxRotation: 20,
             color: 'hsl(220, 83%, 75%)'
           }}, 
           grid: {{ color: 'rgba(255,255,255,0.1)' }},
           border: {{ color: 'rgba(255,255,255,0.2)' }}
         }},
         y: {{ 
-          ticks: {{ color: 'hsl(220, 83%, 75%)' }}, 
+          ticks: {{ color: '#a070ff' }}, 
           grid: {{ color: 'rgba(255,255,255,0.1)' }},
+          border: {{ color: 'rgba(255,255,255,0.2)' }}
+        }},
+        y2: {{
+          position: 'right',
+          min: 0,
+          ticks: {{ color: '#F46060' }},
+          grid: {{ drawOnChartArea: false }},
           border: {{ color: 'rgba(255,255,255,0.2)' }}
         }},
       }}
@@ -337,23 +316,33 @@ def ups_widget():
     today = pd.Timestamp.now()
     chart_start = today - pd.Timedelta(days=1)
 
-    df_filtered = df[(df['date'] >= chart_start)].copy()
+    ups_data = (
+        df.loc[
+            (df['date'] >= chart_start) &
+            (df['battery_charge'].notna()) &
+            (df['battery_charge'] > 0),
+            ['date', 'battery_charge', 'power']
+        ]
+        .copy()
+        .sort_values('date')
+    )
 
-    ups_data = []
-    for _, row in df_filtered.iterrows():
-        battery_charge_trend = row['battery_charge']
-        power_trend = row['power']
-        if pd.notna(battery_charge_trend) and battery_charge_trend > 0:
-            ups_data.append({
-                    "date": str(row['date'].strftime('%d %H:%M')),
-                    "battery_charge": round(battery_charge_trend, 1),
-                    "power": round(power_trend, 1)
-                })
-    ups_data.sort(key=lambda x: x['date'])
+    ups_data['power_3_avg'] = (
+        ups_data['power']
+        .rolling(window=3)
+        .max()
+        .round(1)
+    )
 
-    labels = [d['date'] for d in ups_data]
-    battery_charge_trend = [d['battery_charge'] for d in ups_data]
-    power_trend = [d['power'] for d in ups_data]
+    ups_data = ups_data.dropna(subset=['power_3_avg'])
+
+    ups_data = ups_data.assign(
+        date=ups_data['date'].dt.strftime('%d %H:%M')
+    ).to_dict('records')
+
+    labels = [d['date'] for d in ups_data][::2]
+    battery_charge_trend = [d['battery_charge'] for d in ups_data][::2]
+    power_trend = [d['power_3_avg'] for d in ups_data][::2]
 
     html = f"""
 <!DOCTYPE html>
@@ -362,65 +351,22 @@ def ups_widget():
 <meta charset="utf-8">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">   
 <style>
   :root {{
-    --bgh: 232;
-    --bgs: 23%;
-    --bgl: 18%;
-    --color-primary: hsl(220, 83%, 75%);
     --color-positive: hsl(105, 48%, 72%);
     --color-negative: hsl(351, 74%, 73%);
   }}
-
+  html, body {{ margin: 0; height: fit-content; background-color: hsl(232, 23%, 18%) !important; font-family: 'Inter', sans-serif; font-size: 13px; }}
+  .primary {{ color: #ffffff; }}
+  .row {{ margin: 1px 0; font-size: 12px; }}
+  p {{ margin: 3px 0; }}
+  canvas {{ width: 100% !important; }}
   * {{
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
   }}
-
-  body {{
-    background-color: hsl(var(--bgh), var(--bgs), var(--bgl)) !important;
-    color: var(--color-primary) !important;
-    font-family: monospace;
-    font-size: 14px;
-    padding: 4px;
-  }}
-
-  .model {{
-    font-weight: 500;
-    text-align: center;
-    padding: 0 0 6px 0;
-    border-bottom: 1px solid rgba(255,2255,255,0.15);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letterspacing: 1px;
-  }}
-
-  .row {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-  }}
-
-  .row:last-child {{
-    border-bottom: none;
-  }}
-
-  .label {{
-    font-weight: 500;
-    color: var(--color-primary);
-  }}
-
-  .value {{
-    opacity: 0.75; /* Tal como el .log-content del primer HTML */
-  }}
-
   .status {{
     font-weight: bold;
     /* El color se inyectará por el script o el template */
@@ -428,37 +374,18 @@ def ups_widget():
   }}
 </style>
 </head>
-<body> 
-  <div class="row">
-    <span class="label">Estado</span>
-    <span class="status">{status_label}</span>
-  </div>
-   
-  <div class="row">
-    <span class="label">Autonomía</span>
-    <span class="value">{battery_runtime} min</span>
-  </div>
-  
-  <div class="row">
-    <span class="label">Corte a</span>
-    <span class="value">{battery_runtime_low} min</span>
-  </div>
-  
-  <div class="row">
-    <span class="label">Carga</span>
-    <span class="value">{load_watts} W ({load_pct:.0f}%)</span>
-  </div>
-   
-  <div class="row">
-    <span class="label">Tensión salida</span>
-    <span class="value">{output_voltage} V</span>
-  </div>
-
-  <div style="margin-top: 15px;">
-  <p class="primary" style="margin-top:8px; font-size: 16px;">Trends - Last 24h</p>
-    <div style="position: relative; height: 230px; width: 100%; margin-top: 5px;">
+<body>  
+  <div style="background: rgba(37,40,60,1); border: 1px solid hsl(232, 23%, 22%); box-shadow: 0px 3px 0px 0px hsl(232, 23%, 18%); border-radius: 8px; padding: 16px 16px;">
+  <p><span style="color: #a0b4d0">Status </span><span class="status" style="font-weight:500;">{status_label}</span></p>
+  <p><span style="color: #a0b4d0">Runtime </span><span style="font-weight:500; color: #60A2F4">{battery_runtime} min</span><span style="color: #a0b4d0"> // Low Alarm </span><span style="font-weight:500; color: #F46060">{battery_runtime_low} min</span></p>
+  <p><span style="color: #a0b4d0">Current Power Consumption: </span><span style="font-weight:500; color: #A070FF">{load_watts} W</span></p>
+  <p><span style="color: #a0b4d0">Output Voltage </span><span style="font-weight:500; color: #60A2F4">{output_voltage} V</span></p>
+  <div style="margin-top: 10px;">
+  <p class="hl" style="margin-top:8px; font-weight:500; margin:4px 0 0; color:#ffffff">Trends - Last 24h</p>
+    <div style="position: relative; height: 200px; width: 100%; margin-top: 5px;">
       <canvas id="chart"></canvas>
     </div>
+  </div>
   </div>
 </body>
 <script>
@@ -482,8 +409,8 @@ Chart.defaults.font.family = 'Inter, sans-serif';
     data: {{
       labels: {labels},
       datasets: [
-        {{ label: 'Batery Charge (%)', data: {battery_charge_trend}, pointStyle: 'circle', backgroundColor: '#60f4a2', borderColor: '#60f4a2', fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#60f4a2', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
-        {{ label: 'Power (W)', data: {power_trend}, pointStyle: 'circle', backgroundColor: '#a070ff', borderColor: '#a070ff', fill: false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#a070ff', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5, yAxisID: 'y2' }}
+        {{ label: 'Batery Charge (%)', data: {battery_charge_trend}, pointStyle: 'circle', backgroundColor: '#60f4a2', borderColor: '#60f4a2', borderWidth: 2.5, fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#60f4a2', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
+        {{ label: 'Power (W)', data: {power_trend}, pointStyle: 'circle', backgroundColor: '#a070ff', borderColor: '#a070ff', borderWidth: 1.2, fill: false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#a070ff', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5, yAxisID: 'y2' }}
       ]
     }},
     options: {{
@@ -507,10 +434,9 @@ Chart.defaults.font.family = 'Inter, sans-serif';
       scales: {{
         x: {{ 
           ticks: {{
-            maxRotation: 0,
             maxTicksLimit: 12,
-            minRotation: 30,
-            maxRotation: 30,
+            minRotation: 20,
+            maxRotation: 20,
             color: 'hsl(220, 83%, 75%)'
           }}, 
           grid: {{ color: 'rgba(255,255,255,0.1)' }},
@@ -598,31 +524,44 @@ def mem_disk_widget():
     today = pd.Timestamp.now()
     chart_start = today - pd.Timedelta(days=2)
 
-    df_filtered = df[(df['date'] >= chart_start)].copy()
+    mem_disk_data = (
+        df.loc[
+            (df['date'] >= chart_start) &
+            (df['mem_pct'].notna()) &
+            (df['mem_pct'] > 0),
+            ['date', 'mem_pct', 'zfs_tank_hdd_pct']
+        ]
+        .copy()
+        .sort_values('date')
+    )
 
-    mem_disk_data = []
-    for _, row in df_filtered.iterrows():
+    mem_disk_data = mem_disk_data.assign(
+        date=mem_disk_data['date'].dt.strftime('%d %H:%M')
+    ).rename(columns={
+        'mem_pct': 'mem_usage', 'zfs_tank_hdd_pct': 'tank_hdd_usage'
+    }).to_dict('records')
+
+    mem_disk_data2 = []
+    for _, row in df.iterrows():
         mem_trend = row['mem_pct']
         disc_tank_hdd_trend = row['zfs_tank_hdd_pct']
         if pd.notna(mem_trend) and mem_trend > 0:
-            mem_disk_data.append({
+            mem_disk_data2.append({
                     "date": str(row['date'].strftime('%d %H:%M')),
                     "mem_usage": mem_trend,
                     "tank_hdd_usage": disc_tank_hdd_trend
                 })
-    mem_disk_data.sort(key=lambda x: x['date'])
 
     labels = [d['date'] for d in mem_disk_data][::5]
     mem_usage_trend = [d['mem_usage'] for d in mem_disk_data][::5]
     tank_hdd_trend = [d['tank_hdd_usage'] for d in mem_disk_data][::5]
 
     # Convert the list of dictionaries to a DataFrame for easier manipulation
-    mem_df = pd.DataFrame(mem_disk_data)
+    mem_df = pd.DataFrame(mem_disk_data2)
 
     # Extract the maximum RAM usage from the 'mem_usage' column
     max_mem_usage = mem_df['mem_usage'].max()
-
-    status_color = "var(--color-negative)" if max_mem_usage > 90 else "var(--color-positive)"
+    max_zfs_usage = round(mem_df['tank_hdd_usage'].max() * 3.35 * 0.01, 1)
 
     html = f"""
 <!DOCTYPE html>
@@ -633,82 +572,28 @@ def mem_disk_widget():
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  :root {{
-    --bgh: 232;
-    --bgs: 23%;
-    --bgl: 18%;
-    --color-primary: hsl(220, 83%, 75%);
-    --color-positive: hsl(105, 48%, 72%);
-    --color-negative: hsl(351, 74%, 73%);
-  }}
-
+  html, body {{ margin: 0; height: fit-content; background-color: hsl(232, 23%, 18%) !important; font-family: 'Inter', sans-serif; font-size: 13px; }}
+  .primary {{ color: #ffffff; }}
+  .row {{ margin: 1px 0; font-size: 12px; }}
+  p {{ margin: 3px 0; }}
+  canvas {{ width: 100% !important; }}
   * {{
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
   }}
-
-  body {{
-    background-color: hsl(var(--bgh), var(--bgs), var(--bgl)) !important;
-    color: var(--color-primary) !important;
-    font-family: monospace;
-    font-size: 14px;
-    padding: 4px;
-  }}
-
-  .model {{
-    font-weight: 500;
-    text-align: center;
-    padding: 0 0 6px 0;
-    border-bottom: 1px solid rgba(255,2255,255,0.15);
-    margin-bottom: 6px;
-    text-transform: uppercase;
-    letterspacing: 1px;
-  }}
-
-  .row {{
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.15);
-  }}
-
-  .row:last-child {{
-    border-bottom: none;
-  }}
-
-  .label {{
-    font-weight: 500;
-    color: var(--color-primary);
-  }}
-
-  .value {{
-    opacity: 0.75; /* Tal como el .log-content del primer HTML */
-  }}
-
-  .status {{
-    font-weight: bold;
-    /* El color se inyectará por el script o el template */
-    color: {status_color}; 
-  }}
-
 </style>
 </head>
 <body>  
-  <div class="row">
-    <span class="label">Max RAM usage % (last 7d)</span>
-    <span class="status">{max_mem_usage}</span>
-  </div>
-
-  <div style="margin-top: 15px;">
-  <p class="primary" style="margin-top:8px; font-size: 16px;">Trends - Last 48h</p>
-    <div style="position: relative; height: 200px; width: 100%; margin-top: 5px;">
+  <div style="background: rgba(37,40,60,1); border: 1px solid hsl(232, 23%, 22%); box-shadow: 0px 3px 0px 0px hsl(232, 23%, 18%); border-radius: 8px; padding: 16px 16px;">
+  <p><span style="color: #a0b4d0">Max RAM usage (last 7d): </span><span style="font-weight:500; color: #A070FF">{max_mem_usage} min</span></p>
+  <p><span style="color: #a0b4d0">Max ZFS used capacity (last 7d): </span><span style="font-weight:500; color: #60F4A2">{max_zfs_usage} TB</span><span style="color: #a0b4d0"> out of </span><span style="font-weight:500; color: #60F4A2">3.35 TB</span></p>
+  <div style="margin-top: 10px;">
+  <p class="hl" style="margin-top:8px; font-weight:500; margin:4px 0 0; color:#ffffff">Trends - Last 48h</p>
+    <div style="position: relative; height: 180px; width: 100%; margin-top: 5px;">
       <canvas id="chart"></canvas>
     </div>
+  </div>
   </div>
 </body>
 <script>
@@ -732,8 +617,8 @@ Chart.defaults.font.family = 'Inter, sans-serif';
     data: {{
       labels: {labels},
       datasets: [
-        {{ label: 'Memory usage (%)', data: {mem_usage_trend}, pointStyle: 'circle', backgroundColor: '#a070ff', borderColor: '#a070ff', fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#a070ff', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
-        {{ label: 'ZFS Tank-hdd usage (%)', data: {tank_hdd_trend}, pointStyle: 'circle', backgroundColor: '#60f4a2', borderColor: '#60f4a2', fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#60f4a2', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
+        {{ label: 'RAM usage (%)', data: {mem_usage_trend}, pointStyle: 'circle', backgroundColor: '#a070ff', borderColor: '#a070ff', borderWidth: 2.5, fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#a070ff', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
+        {{ label: 'ZFS Tank-hdd usage (%)', data: {tank_hdd_trend}, pointStyle: 'circle', backgroundColor: '#60f4a2', borderColor: '#60f4a2', borderWidth: 2.5, fill:  false, pointRadius: 0, pointHoverRadius: 6, pointHoverBackgroundColor: '#60f4a2', pointHoverBorderWidth: 2, pointHoverBorderColor: '#ffffff', tension: 0.5 }},
       ]
     }},
     options: {{
@@ -757,10 +642,9 @@ Chart.defaults.font.family = 'Inter, sans-serif';
       scales: {{
         x: {{ 
           ticks: {{
-            maxRotation: 0,
             maxTicksLimit: 12,
-            minRotation: 30,
-            maxRotation: 30,
+            minRotation: 20,
+            maxRotation: 20,
             color: 'hsl(220, 83%, 75%)'
           }}, 
           grid: {{ color: 'rgba(255,255,255,0.1)' }},

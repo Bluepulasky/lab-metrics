@@ -18,7 +18,7 @@ UPS_NAME = "cyberpower"
 
 # Configuración
 LOG_FILE = BASE_DIR / "metrics.csv"
-MAX_ROWS = 20000  # Máximo de registros de datos (sin contar la cabecera)
+MAX_ROWS = 40000  # Máximo de registros de datos (sin contar la cabecera)
 
 def truncate_log_if_needed(file_path, max_rows):
     """
@@ -93,7 +93,7 @@ def fetch_ups_stats():
     ups_watts = round(ups_load * 540 / 100, 1)
 
     #CPU
-    cpu_cores = psutil.cpu_percent(percpu=True, interval=10)
+    cpu_cores = psutil.cpu_percent(percpu=True, interval=5)
     cpu_avg = round(sum(cpu_cores) / len(cpu_cores), 1)
 
     # RAM
@@ -111,6 +111,15 @@ def fetch_ups_stats():
 
     zfs_tank_hdd_pct = round((used / (used + avail)) * 100, 1)
 
+    # Retrieve all temperature sensors
+    temps = psutil.sensors_temperatures()
+
+    # Check if 'k10temp' is available and extract 'Tdie'
+    if 'k10temp' in temps:
+        for entry in temps['k10temp']:
+            if entry.label == 'Tdie':
+                tdie_temp = round(entry.current, 1)
+
     stats_file = LOG_FILE
     stats_file.parent.mkdir(parents=True, exist_ok=True)
     file_exists = stats_file.exists()
@@ -118,17 +127,18 @@ def fetch_ups_stats():
     with open(stats_file, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["date", "battery_charge", "ups_watts", "cpu_avg_10s", "mem_pct", "zfs_tank_hdd_pct"])
+            writer.writerow(["date", "battery_charge", "ups_watts", "cpu_avg_10s", "mem_pct", "zfs_tank_hdd_pct", "Tdie"])
         writer.writerow([
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             battery_charge,
             ups_watts,
             cpu_avg,
             mem_pct,
-            zfs_tank_hdd_pct
+            zfs_tank_hdd_pct,
+            tdie_temp
         ])
-
-    msg = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - ups battery: {battery_charge}, power: {ups_watts}W, cpu (10s avg): {cpu_avg}%, memory {mem_pct}%, zfs tank-hdd {zfs_tank_hdd_pct}%"
+    
+    msg = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: UPS battery {battery_charge}%, UPS power {ups_watts}W, CPU(5s) {cpu_avg}%, RAM {mem_pct}%, zfs tank-hdd {zfs_tank_hdd_pct}%, Tdie {tdie_temp}C"
     logging.info(msg)
     print(msg)
 
