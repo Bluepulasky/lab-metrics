@@ -2,9 +2,9 @@ from flask import Flask, jsonify, render_template_string
 import socket
 import pandas as pd
 from datetime import datetime
-import csv
 import os
 from pathlib import Path
+import subprocess
 
 app = Flask(__name__)
 
@@ -559,13 +559,20 @@ def mem_disk_widget():
         .sort_values('date')
     )
 
+    used, avail = subprocess.check_output(
+    ["zfs", "list", "-H", "-p", "-o", "used,avail", "tank-hdd"],
+    text=True
+    ).strip().split("\t")
+
+    zfs_total_space = round((int(used)  + int(avail)) / 1024**4, 2)
+
     labels = [d['date'] for d in mem_disk_data][::5]
     mem_usage_trend = [d['mem_usage'] for d in mem_disk_data][::5]
     tank_hdd_trend = [d['tank_hdd_usage'] for d in mem_disk_data][::5]
 
     # Extract the maximum RAM usage from the 'mem_usage' column
     max_mem_usage = mem_df['mem_pct'].max()
-    max_zfs_usage = round(mem_df['zfs_tank_hdd_pct'].max() * 3.35 * 0.01, 1)
+    max_zfs_usage = round(mem_df['zfs_tank_hdd_pct'].max() * zfs_total_space * 0.01, 2)
 
     html = f"""
 <!DOCTYPE html>
@@ -591,7 +598,7 @@ def mem_disk_widget():
 <body>  
   <div style="background: rgba(37,40,60,1); border: 1px solid hsl(232, 23%, 22%); box-shadow: 0px 3px 0px 0px hsl(232, 23%, 18%); border-radius: 8px; padding: 16px 16px;">
   <p><span style="color: #a0b4d0">Max RAM usage (last 7d): </span><span style="font-weight:500; color: #A070FF">{max_mem_usage} %</span></p>
-  <p><span style="color: #a0b4d0">Max ZFS used capacity (last 7d): </span><span style="font-weight:500; color: #60F4A2">{max_zfs_usage} TB</span><span style="color: #a0b4d0"> out of </span><span style="font-weight:500; color: #60F4A2">3.35 TB</span></p>
+  <p><span style="color: #a0b4d0">Max ZFS used capacity (last 7d): </span><span style="font-weight:500; color: #60F4A2">{max_zfs_usage} TB</span><span style="color: #a0b4d0"> out of </span><span style="font-weight:500; color: #60F4A2">{zfs_total_space} TB</span></p>
   <div style="margin-top: 10px;">
   <p class="hl" style="margin-top:8px; font-weight:500; margin:4px 0 0; color:#ffffff">Trends - Last 48h</p>
     <div style="position: relative; height: 180px; width: 100%; margin-top: 5px;">

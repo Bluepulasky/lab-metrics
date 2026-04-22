@@ -109,7 +109,7 @@ def fetch_ups_stats():
     used = int(used)
     avail = int(avail)
 
-    zfs_tank_hdd_pct = round((used / (used + avail)) * 100, 1)
+    zfs_tank_hdd_pct = round((used / (used + avail)) * 100, 2)
 
     # Retrieve all temperature sensors
     temps = psutil.sensors_temperatures()
