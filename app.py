@@ -558,14 +558,7 @@ def mem_disk_widget():
         .copy()
         .sort_values('date')
     )
-
-    used, avail = subprocess.check_output(
-    ["zfs", "list", "-H", "-p", "-o", "used,avail", "tank-hdd"],
-    text=True
-    ).strip().split("\t")
-
-    zfs_total_space = round((int(used)  + int(avail)) / 1024**4, 2)
-
+    zfs_total_space = df['zfs_total_storage'].iloc[-1]
     labels = [d['date'] for d in mem_disk_data][::5]
     mem_usage_trend = [d['mem_usage'] for d in mem_disk_data][::5]
     tank_hdd_trend = [d['tank_hdd_usage'] for d in mem_disk_data][::5]

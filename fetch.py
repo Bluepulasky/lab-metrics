@@ -110,6 +110,7 @@ def fetch_ups_stats():
     avail = int(avail)
 
     zfs_tank_hdd_pct = round((used / (used + avail)) * 100, 2)
+    zfs_total_space = round((int(used)  + int(avail)) / 1024**4, 2)
 
     # Retrieve all temperature sensors
     temps = psutil.sensors_temperatures()
@@ -127,7 +128,7 @@ def fetch_ups_stats():
     with open(stats_file, "a", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(["date", "battery_charge", "ups_watts", "cpu_avg_10s", "mem_pct", "zfs_tank_hdd_pct", "Tdie"])
+            writer.writerow(["date", "battery_charge", "ups_watts", "cpu_avg_10s", "mem_pct", "zfs_tank_hdd_pct", "Tdie", "zfs_total_storage"])
         writer.writerow([
             datetime.now().strftime("%Y-%m-%d %H:%M"),
             battery_charge,
@@ -135,7 +136,8 @@ def fetch_ups_stats():
             cpu_avg,
             mem_pct,
             zfs_tank_hdd_pct,
-            tdie_temp
+            tdie_temp,
+            zfs_total_space
         ])
     
     msg = f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: UPS battery {battery_charge}%, UPS power {ups_watts}W, CPU(5s) {cpu_avg}%, RAM {mem_pct}%, zfs tank-hdd {zfs_tank_hdd_pct}%, Tdie {tdie_temp}C"
